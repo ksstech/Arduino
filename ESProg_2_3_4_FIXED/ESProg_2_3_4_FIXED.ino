@@ -14,8 +14,8 @@
 
   Commands:
 
-  Test :    esptool.py --chip esp32 --port socket://192.168.1.234:24 --before default_reset --after hard_reset flash_id
-  FW upload:  esptool.py --chip esp32 --port socket://192.168.1.234:24 write_flash  0x10000 C:\Users\TJ\Desktop\tmp\FTP_TMP\Blink.bin
+  Test :    esptool.py --chip esp32 --port socket://192.168.0.28:24 --before default_reset --after hard_reset flash_id
+  FW upload:  esptool.py --chip esp32 --port socket://192.168.0.28:24 write_flash  0x10000 C:\Users\TJ\Desktop\tmp\FTP_TMP\Blink.bin
   FORCE RESET : esptool.py --chip esp32 --port socket://192.168.1.234:24 flash_id
 
   FULL Upload including BOOT
@@ -60,240 +60,296 @@
 */
 
 #include <WiFi.h>
+#include <Commander.h>
+#include <StaticBuffer.h>
+#include <DebugDefinitions.h>
 
-//Serial port 1
+// UART1
 #define RXD1 34 
 #define RTS1 32
 #define TXD1 33
 #define DTR1 23
 
-//Serial port 2
+// UART2
 #define RXD2 35 
 #define DTR2 25
 #define TXD2 26
 #define RTS2 27 
 
-WiFiServer ServerRaw(23);  // TELNET port - 23 - Target Serial Debug interface
-WiFiServer ServerProg(24); // TELNET port - 24 - Target Programming interface
-WiFiServer Server(25);     // TELNET port - 25 - ESProg local Serial port 0
+#define UART0_BAUD  115200
+#define UART1_BAUD  115200
+#define UART2_BAUD  256000
+//  set 115200  128000  192000  230400  256000  345600  384000  460800  512000  576000
+//  get 115942  128000  192771  231884  256000  345665  384038  460929  512000  576057
+// Tested with 0x20000 read_flash
+//      0/5     0/5     5/5     0/5     2/5     1/5     0/5     0/5     0/5     0/5
+// Tested with 0x40000 read_flash
+//                      3/5
+// Tested with 0x60000 read_flash
+//                      1/5             0/10
 
-WiFiClient Client;        //ESProg local
-WiFiClient Client1;       //Target Serial Debug
-WiFiClient ClientProg;    //Target Programming
+Commander MyCmdr;
+CharBuffer MyBuf;
 
-const char* ssid = "irmacos"; // Your WiFi SSID
-const char* password = "Irm@C0$1"; // Your WiFi Password
+WiFiServer ServerTargetCLI(23);     // TELNET port 23 -> UART1 (Target CLI) interface
+WiFiClient ClientTargetCLI;
+WiFiServer ServerTargetPGM(24);     // TELNET port 24 -> UART2 (Target PGM) interface
+WiFiClient ClientTargetPGM;
+WiFiServer ServerHostCLI(25);       // TELNET port 25 -> UART0 (Host CLI) interface
+WiFiClient ClientHostCLI;
 
-int rst = 0;
-
-void setup() {
-  int8_t i;
-  Serial.begin(115200);
-  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);
-//  Serial1.begin(256000, SERIAL_8N1, RXD1, TXD1);
-  Serial2.begin(256000, SERIAL_8N1, RXD1, TXD1);
-//  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);
-//  Serial2.begin(115200, SERIAL_8N1, RXD1, TXD1);  
-//  Serial2.begin(256000, SERIAL_8N1, RXD2, TXD2);
-  Serial.println("\nESProg adapter v2.3.4 boot - OK!");
-    
-  Serial.println("\nConnecting to WiFi '" + String(ssid) + String("..."));
-  
-  WiFi.begin(ssid, password);
-
-  for (i = 60; i != 0; i--) {
-    if (WiFi.status() == WL_CONNECTED) break;
-    delay(333);
-  }
-  if (i == 0) {
-    Serial.println("Network connection failed!\nRestarting ESP32!");
-    delay(1000);
-    ESP.restart();
-  }
-  
-  Serial.print("Connected.\nLocal IP address: ");
-  Serial.println(WiFi.localIP());
- // Serial.println("");
-
-  //start UART and the server  
-
-  ServerRaw.begin();
-  ServerRaw.setNoDelay(true);
-  Serial.print("\nUsage:\nPort 23 - debug target.\n");   
-  ServerProg.begin();
-  ServerProg.setNoDelay(true);
-  Serial.print("Port 24 - upload target firmware.\n");   
-  Server.begin();
-  Server.setNoDelay(true);
-  Serial.print("Port 25 - ESProg Serial.\n"); 
-
-  
-  pinMode(DTR1, OUTPUT);
-  digitalWrite(DTR2, HIGH);
-  pinMode(RTS1, OUTPUT);
-  digitalWrite(RTS2, HIGH);  
-  
+bool restartHandler(Commander &Cmdr) {
+  Cmdr.println("... Restarting ESP32!");
+  delay(1000);
+  ESP.restart();
+  return 0;
 }
 
-
-void Reset_target()
-{
-   //set the DTR2 signal
-  bool dtr = (ClientProg && ClientProg.connected());
-//  bool dtr = 1;
+bool resetHandler(Commander &Cmdr) {
+  static int rst = 0;
+  bool dtr = (ClientTargetPGM && ClientTargetPGM.connected());
   digitalWrite(DTR1, !dtr);
-  //Serial.print(dtr);
-  //Serial.println("- DTR!");
-  if (dtr == 1 )
-  {
-    //Serial.println("Client Connected 1!");
-    if (rst == 0){
+  if (dtr == 1 ) {
+    if (rst == 0) {
         digitalWrite(DTR1, LOW);
         delay(50);
         digitalWrite(RTS1, LOW);
         delay(50);
         rst = 1;
-        //Serial.println("\nrst = 1 Target reset");
-        Serial.println("RESET Target");
-        Serial.print("Programming target ... ");
-       // delay(50);
-       // digitalWrite(DTR2, HIGH);
+        Cmdr.println("RESET Target" strNL "Programming target ... ");
         delay(50);
         digitalWrite(RTS1, HIGH);
         delay(50);
     }
+  } else if (rst == 1) {
+    rst = 0;
+    Cmdr.println("Done.");
+    digitalWrite(DTR1, HIGH);
+    delay(50);
+    digitalWrite(RTS1, LOW);
+    delay(50);
+    digitalWrite(RTS1, HIGH);
   }
-  else {
-      if (rst == 1)
-      {
-        rst = 0;
-        //Serial.println("\nrst = 0 Target reset");
-        Serial.println("Done.");
-        digitalWrite(DTR1, HIGH);
-        delay(50);
-        digitalWrite(RTS1, LOW);
-        delay(50);
-        digitalWrite(RTS1, HIGH);
-      }
-  } 
+  return 0;
 }
 
-void loop() 
-{
- // delay(200);
+bool reportHandler(Commander &Cmdr) {
+  Cmdr.println("#####################" strNL "ESProg adapter v2.3.4" strNL "#####################");
+  Cmdr.println("# Prompt=" + String(Cmdr.commandPrompt()));
+  Cmdr.println("# Echo=" + String(Cmdr.echo()));
+  Cmdr.println("# CmndProc=" + String(Cmdr.commandProcessor()));
+  Cmdr.println("# errorMessages=" + String(Cmdr.errorMessages()));
+  Cmdr.println("# showHelp=" + String(Cmdr.showHelp()));
+  Cmdr.println("###############################################");
+  Cmdr.println("#\tUART0: " + String(Serial0.baudRate()));
+  Cmdr.println("#\tUART1: " + String(Serial1.baudRate()));
+  Cmdr.println("#\tUART2: " + String(Serial2.baudRate()));
+  Cmdr.println("###############################################");
+  Cmdr.println("# Usage" strNL "\tPort 23 -> Target CLI." strNL "\tPort 24 -> Target PGM." strNL "\tPort 25 -> Host CLI.");
+  return 0;
+}
+
+bool connectHandler(Commander &Cmdr, String ssid, String pswd) {
+  Cmdr.print("Connecting to WiFi with '" + String(ssid) + String("' & '") + String(pswd) + String("' ..."));
+  WiFi.begin(ssid, pswd);
+  int8_t i = 0;
+  do {
+    if (++i == 60) {
+      Cmdr.println(strNL "Network connection failed!");
+      restartHandler(Cmdr);
+    }
+    delay(333);
+  } while (WiFi.status() != WL_CONNECTED);
+  Cmdr.print(" Connected!" strNL "Local IP address: ");
+  Cmdr.println(WiFi.localIP());
+  return 0;
+}
+
+bool accessHandler(Commander &Cmdr) {
+  String mySSID = "";
+  String myPSWD = "";
+  if ((Cmdr.countItems() == 2) && Cmdr.getString(mySSID) && Cmdr.getString(myPSWD)) {
+      connectHandler(Cmdr, mySSID, myPSWD);
+  } else {
+    Cmdr.println("Must have <ssid> and <password> parameters");
+  }
+  return 0;
+}
+
+bool flashbaudHandler(Commander &Cmdr) {
+  int myBaudrate = 0;
+  if (Cmdr.countItems() == 1 && Cmdr.getInt(myBaudrate) && myBaudrate >= 9600 && myBaudrate <= 921600 && (myBaudrate % 100) == 0) {
+    Serial2.updateBaudRate(myBaudrate);
+    Cmdr.println("UART2 set to " + String(Serial2.baudRate()));
+  } else {
+    Cmdr.println("Invalid <baudrate>, 9600 <= baudrate <= 921600, multiple of 100");
+  }
+  return 0;
+}
+
+const commandList_t MyCommands[] = {
+  { "report", reportHandler, "Report dynamic config" },
+  { "restart", restartHandler, "Restart the HOST" },
+  { "reset", resetHandler, "Reset the TARGET" },
+  { "access", accessHandler, "Access Wifi with ssid & password" },
+  { "flashbaud", flashbaudHandler, "Set target flash baudrate" },
+};
+
+void initialiseCommander(void) {
+  Serial0.begin(UART0_BAUD);
+  MyCmdr.begin(&Serial0, MyCommands, sizeof(MyCommands));
+  MyCmdr.echo(true);
+  MyCmdr.echoToAlt(true);
+  MyCmdr.commandPrompt(true);
+}
+
+void initialiseHostCLI(void) {
+  ServerHostCLI.begin();
+  ServerHostCLI.setNoDelay(true);
+}
+
+void initialiseTargetCLI(void) {
+  Serial1.begin(UART1_BAUD, SERIAL_8N1, RXD1, TXD1);
+  ServerTargetCLI.begin();
+  ServerTargetCLI.setNoDelay(true);
+}
+
+void initialiseTargetPGM(void) {
+  Serial2.begin(UART2_BAUD, SERIAL_8N1, RXD1, TXD1);
+  ServerTargetPGM.begin();
+  ServerTargetPGM.setNoDelay(true);
+}
+
+void initialiseTargetGPIO(void) {
+  pinMode(DTR1, OUTPUT);
+  digitalWrite(DTR2, HIGH);
+  pinMode(RTS1, OUTPUT);
+  digitalWrite(RTS2, HIGH);
+}
+
+void setup() {
+  initialiseCommander();
+  connectHandler(MyCmdr, "irmacos", "Irm@C0$1");
+  initialiseHostCLI();
+  initialiseTargetCLI();
+  initialiseTargetPGM();
+  initialiseTargetGPIO();
+  reportHandler(MyCmdr);
+}
+
+void handleSerialToTelnet(Stream& In, WiFiClient& Out) {
+  if (In.available()) {
+    size_t length = In.available();
+    char buffer[length];
+    In.readBytes(buffer, length);
+    if (Out && Out.connected()) {
+      Out.write(buffer, length);
+      delay(1);
+    }
+  }
+}
+
+void loop() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected! Retrying ...");
-    if (Client) Client.stop();
-    if (Client1) Client1.stop();
-    if (ClientProg) ClientProg.stop();  
+    MyCmdr.println("WiFi not connected! Retrying ...");
+    if (ClientHostCLI)
+      ClientHostCLI.stop();
+    if (ClientTargetCLI)
+      ClientTargetCLI.stop();
+    if (ClientTargetPGM)
+      ClientTargetPGM.stop();  
     return;
   }
   
-  if (Server.hasClient()) { //check if there are any new clients
-  Client = Server.accept();
-  if (!Client) Serial.println("available broken");
-  Serial.print("New client on port 25: ");
-  Serial.println(Client.remoteIP());
+  if (ServerHostCLI.hasClient()) {      // handle Host CLI connection request via TCP
+    ClientHostCLI = ServerHostCLI.accept();
+    if (ClientHostCLI) {
+      MyCmdr.attachAltPort(&ClientHostCLI);
+      MyCmdr.echoToAlt(1);
+      MyCmdr.copyRepyAlt(1);
+      MyCmdr.print("Host CLI connect: ");
+      MyCmdr.println(ClientHostCLI.remoteIP());
+    } else {
+      MyCmdr.println("Host CLI connect: failed");
+    }
   } else {
-    //no free/disconnected spot so reject
-    WiFiClient rejectClient1 = Server.accept();
+    WiFiClient rejectClient1 = ServerHostCLI.accept();
     rejectClient1.stop();
   }
   
-  if (Client && Client.connected()) { //check clients for data
-    if (Client.available()) {
-      while (Client.available())
-      Serial.write(Client.read()); //get data from the telnet client and push it to the UART
+  if (ClientHostCLI && ClientHostCLI.connected()) {
+    if (ClientHostCLI.available()) {
+      MyBuf.appendFrom(ClientHostCLI);
+      if (MyBuf.hasLine()) {
+        MyCmdr.loadString(MyBuf.get());
+        MyBuf.reset();
+      } else {
+        MyCmdr.println(MyBuf.get());
       }
+    }
+  } else if (ClientHostCLI) {
+    ClientHostCLI.stop();
   }
-  else if (Client) Client.stop();
 
-//DEBUG TARGET Server  
-  if (ServerRaw.hasClient()) { //check if there are any new clients
-  Client1 = ServerRaw.accept();
-  if (!Client1) Serial.println("available broken");
-  Serial.print("New client on port 23: ");
-  Serial.println(Client1.remoteIP());
+  if (ServerTargetCLI.hasClient()) {    // handle Target CLI connection request via TCP
+    ClientTargetCLI = ServerTargetCLI.accept();
+    if (ClientTargetCLI) {
+      MyCmdr.print("Target CLI connect: ");
+      MyCmdr.println(ClientTargetCLI.remoteIP());
+    } else {
+      MyCmdr.println("Target CLI connect: failed");
+    }
   } else {
     //no free/disconnected spot so reject
-    WiFiClient rejectClient1 = ServerRaw.accept();
+    WiFiClient rejectClient1 = ServerTargetCLI.accept();
     rejectClient1.stop();
   }
 
-  if (Client1 && Client1.connected()) { //check clients for data
-    if (Client1.available()) {
-      while (Client1.available())
-      Serial1.write(Client1.read()); //get data from the telnet client and push it to the UART1
-      }
-  }
-  else if (Client1) Client1.stop();
-
-
-//programming TARGET Server
-  if (ServerProg.hasClient()) { //check if there are any new clients
-     if (ClientProg && !ClientProg.connected()) {
-        Serial.print("Client closed on port 25!");
-        ClientProg.stop();
+  if (ClientTargetCLI && ClientTargetCLI.connected()) { //check clients for data
+    if (ClientTargetCLI.available()) {
+      while (ClientTargetCLI.available())
+        Serial1.write(ClientTargetCLI.read()); //get data from the telnet client and push it to the UART1
     }
-  ClientProg = ServerProg.accept();
-  if (!ClientProg) Serial.println("available broken");
-  Serial.print("\nNew client on port 24: ");
-  Serial.println(ClientProg.remoteIP());
- // Reset_target();
+  } else if (ClientTargetCLI) {
+    ClientTargetCLI.stop();
+  }
+
+  if (ServerTargetPGM.hasClient()) {    // handle Target PGM connection request via TCP
+    if (ClientTargetPGM && !ClientTargetPGM.connected()) {
+      MyCmdr.println("Target PGM closed");
+      ClientTargetPGM.stop();
+    }
+    ClientTargetPGM = ServerTargetPGM.accept();
+    if (ClientTargetPGM) {
+      MyCmdr.print("Target PGM connect: ");
+      MyCmdr.println(ClientTargetPGM.remoteIP());
+    } else {
+      MyCmdr.println("Target PGM connect: failed");
+    }
   } else {
     //no free/disconnected spot so reject
-    WiFiClient rejectClient = ServerProg.accept();
+    WiFiClient rejectClient = ServerTargetPGM.accept();
     rejectClient.stop();
   }
 
-  Reset_target();
-  if (ClientProg && ClientProg.connected()) {//check clients for data
-   // Reset_target();
-    if (ClientProg.available()) {
-      Reset_target();
-      while (ClientProg.available())
-      Serial2.write(ClientProg.read()); //get data from the telnet client and push it to the UART
-      }
-  }
-  else if (ClientProg) {
-    ClientProg.stop();
-      Serial.print("Client closed on port 25.");
-      Serial2.flush();
-      Serial1.flush();
-      Serial.flush();
-  }
-
-
-
-// CHECK UART ports DATA
-  
-  if (Serial.available()){ //check UART for data
-    size_t len = Serial.available();
-    char sbuf[len];
-    Serial.readBytes(sbuf, len);
-    if (Client && Client.connected()){ 
-      Client.write(sbuf, len);
-      delay(1);
+  resetHandler(MyCmdr);
+  if (ClientTargetPGM && ClientTargetPGM.connected()) {
+    if (ClientTargetPGM.available()) {
+      resetHandler(MyCmdr);
+      while (ClientTargetPGM.available())
+        Serial2.write(ClientTargetPGM.read()); //get data from the telnet client and push it to the UART
     }
+  } else if (ClientTargetPGM) {
+    ClientTargetPGM.stop();
+    MyCmdr.println("Target PGM closed");
+    Serial2.flush();
+    Serial1.flush();
+    Serial.flush();
   }
 
-   if (Serial1.available()){ //check UART for data
-    size_t len1 = Serial1.available();
-    char sbuf1[len1];
-    Serial1.readBytes(sbuf1, len1);
-    if (Client1 && Client1.connected()){
-      Client1.write(sbuf1, len1);
-      delay(1);
-    }
-  }
-
-    if (Serial2.available()){ //check UART for data
-    size_t len2 = Serial2.available();
-    char sbuf2[len2];
-    Serial2.readBytes(sbuf2, len2);
-    if (ClientProg && ClientProg.connected()){
-      ClientProg.write(sbuf2, len2);
-      delay(1);
-    }
-  }
+  // Process command handler
+  MyCmdr.update();
+  handleSerialToTelnet(Serial1, ClientTargetCLI);
+  handleSerialToTelnet(Serial2, ClientTargetPGM);
 }
+

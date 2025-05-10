@@ -81,17 +81,17 @@ WiFiClient Client;        //ESProg local
 WiFiClient Client1;       //Target Serial Debug
 WiFiClient ClientProg;    //Target Programming
 
-const char* ssid = "SSID"; // Your WiFi SSID
-const char* password = "passwd"; // Your WiFi Password
+const char* ssid = "irmacos"; // Your WiFi SSID
+const char* password = "Irm@C0$1"; // Your WiFi Password
 
 int rst = 0;
 
 void setup() {
   int8_t i;
   Serial.begin(115200);
-  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);
+  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);    // original
 //  Serial1.begin(256000, SERIAL_8N1, RXD1, TXD1);
-  Serial2.begin(256000, SERIAL_8N1, RXD1, TXD1);
+  Serial2.begin(256000, SERIAL_8N1, RXD1, TXD1);    // original, part working
 //  Serial1.begin(115200, SERIAL_8N1, RXD1, TXD1);
 //  Serial2.begin(115200, SERIAL_8N1, RXD1, TXD1);  
 //  Serial2.begin(256000, SERIAL_8N1, RXD2, TXD2);

@@ -1,0 +1,173 @@
+Commander changelog
+(Changelog started at 1.2.3)
+
+4.2.3
+Update *char to const *char to remove compiler warnings.
+Update some examples to remove casting from const *char to *char.
+Removed ideosyncratic spellings from examples.
+
+4.2.2
+Updated to 4.2.2 because I messed up the last releases on Github. Needs a whole new release tag to fix.
+
+
+4.2.0
+Added reloadCommands() function. This re-computes the command lengths so that command strings can be changed at run time. If the command list is declared as a non const, then the string and function pointers can be reassigned. In order to change a command string to one of a different length commander needs to recompute the command lengths, so this function needs to be called if a command string pointer is assigned to a string of a different length.
+Added attachCommandArray() method similar to attachCommands but takes the array length as an argument instead of sizeof().
+Added an extra help system. You can attach an array of strings. If this is attached and help has a payload it will try and match the payload to a command and print out the extra help in the array index that matches the command. Example 'help status' would print the extra help for the command 'status'.
+Extra help availability is indicated in the help and query information.
+Updated to inherit Arduino print class and replaced template methods with methods for the print class. Thanks to Louis Beaudoin of Embedded creations for lots of work on this and some other up coming features https://github.com/embedded-creations
+Changed write() to add() to fix conflict with print class.
+Added example showing reallocation of command Handler, command text and help text to different character arrays and functions.
+Added example showing how to use one command to edit the help text and command text of another command stored as a String object.
+Added example of a dynamically generated command list: A command can be used to create a custom submenu of items.
+Added example of using a fixed length command array, and populating it with commands to create a bespoke menu of variable length.
+Fixed getLength() to return a length in all circumstances.
+Replaced NULL with '\0' when checking chars for null character.
+Removed unused variables and fixed issue causing compiler warnings on platformIO and ESP boards.
+
+4.1.1
+Minor bugfix related to wonky resease.
+Fixed missing references to endOfLineCharacter that were still '/n'. **Changing endOfLineCharacter may have implications for how streams get printed.
+Changed endOfLineChar(char) so that if the end of line character is set to a carriage return, stripCR is automatically set to false.
+
+4.1.0
+
+Added setUserString(&String) and printUserString(). A String can be created with user defined information, for example a product name, web URL and firmware version. This String will be printed at the start of the help page and status query page (the '?' command). This allows the user to incorporate their own device or product information into the command system. The string can be formatted however the user wants, including with newlines, tabs etc, and will be printed exactly as is - Other help page items print the comment characterat the start of each line, if the user wants the user String to also appear as comment lines then they need to incorporate the comment characters in the String themselves.
+Updated test suite sketch with example use.
+
+Commander 4.0.0 - Method act
+
+Method CHAIN'O'RAMA! All methods that used to return void now return a *this reference allowing them to be chained.
+Changed some configuration commands such as setCommentChar to commentChar and overloaded them so the same function name can be used to set or get the property.
+**Quite a few method names have changed so there is better API consistency.
+Added setPending(). If you directly write commands to the bufferString, call setPending() before update to tell Commander there is a command waiting there.
+Updated keyword list.
+Fixed some errors in examples.
+
+Commander 3.2.0
+
+Re-wrote containsOn/Off/True/False methods so they search the entire buffer for case insensitive tokens (on, ON, On, true, True, TRUE etc) rather than just checking the next item. The search method looks for the start char (e.g t or T) and if found checks that the target phrase is bounded by a delimiter/end of line before checking for the rest of the characters... possibly not optimal yet? ...
+Changed how update works so that when the inport is NULL, Commander will just look for pending commands. This is to allow Commander to be used without an inport so it can be fed Strings from another service (e.g an MQTT payload)
+Added another begin() method that does not need ports to be specified.
+Added method that returns the command list pointer.
+Added a quick method to compliment the quickSet methods. Quick does not set any variables, but can be used to add sub commands with a quick help system in the same way as quickSet and Get. It is helpful for rapid prototyping where you want to add simple commands for debugging without creating whole command handlers.
+Updated the quickSet example with the new quick commands
+Added write(uint8_t) method to add a single character to the buffer
+Changed how feed and feedString work so the command prompt state is saved and reinstated at the end.
+
+Commander 3.1.1
+
+Corrected some keywords.
+Fixed backslash error in #include.
+
+Commander 3.1.0
+
+Changed streamData to private method.
+Made pre and postfix Strings private.
+Changed set and get autoformat methods to autoformat(arg) and returnval autoformat() for consistency.
+Changed most examples to use an initialiser function after the command list instead of forward declarations when starting Commander. Multi layer examples still use forward declarations.
+Added template examples to match wiki.
+
+Commander 3.0.0
+
+Made some major changes under the hood to the way payloads and items are processed including adding support for chaining multiple commands together in a single line:
+
+Changed help and query formatting so the comment char appears at the start of every line for help, query and errors.
+Changed delimiter char to a String. The defaults are | = , : \ / plus SPACE and TAB.
+Removed setDelimChar() method.
+Created setDelimiters(String), getDelimiters() and addDelimiter(char) methods.
+Added a method where delims are ignored for items in quotes when using getString.
+Added a settings bit to allow quotes to be ignored.
+Added containsFalse() and containsOff() to compliment ON and TRUE.
+Added public method of reading the dataReadIndex variable. This marks the start of the payload, or any section of the payload that has not been extracted with the getInt, getFloat or getString methods.
+Added chain() method, breakChain(), autoChain settings bit and autoChain() methods to allow commands to be chained on a single line. Unless set to autoChain mode, if chain() is called at the end of a handler, Commander will find the start of the next item in the payload (anything left over after calls to getInt etc), and reload everything from that point into the buffer as a pending command for processing on the next call to update. If autochaining is enables, then placing breakChain at the end of a handler will prevent any other commands in that chain from being handled.
+Chaining will work on any user command provided that any payload for that command has been extracted using the getInt, getFloat or getString methods. These methods will place the dataReadIndex at the end of the commands payload, and before the start of any chained command.
+Setting autoChain(true) will automatically allow all commands to be chained.
+A chaining state bit can be used to surpress the unrecognised command handler so if chained command does not turn out to be a valid command it gets ignored instead of generating an error.
+Comment characters break chains, so comments can be left at the end of a command line, for example in command files.
+Added autoChainSurpressErrors bit and methods to control if error messages are displayed when chaining commands.
+Added quickSet and get methods for Strings.
+Chains will break when a quickset or quickget command is found - this prevents chaining errors.
+Added a help tag [C] that indicates if the command is chainable.
+Fixed a lock bug printing the unlock message when it didn't unlock.
+Fixed internal commands recognising bad commands due to sloppy optimisation.
+Inproved contaonsOn,off,true and false so they only with for recognisable items, not when the characters appear in a phrase. They now check the next item in the payload, but do not move dataReadIndex.
+
+Commander 2.2.0
+
+Optimised the command search. The command search used to use the String method startsWith(). This has been replaced with a new algorithm:
+- When checking each command against the buffer it first checks if the buffer is too short (shorter than the command being checked) and returns false if it is.
+- If the command is a single character it performs a specific test and returns true if it matches the buffer, and has a valid end of command char (' ', end of line or delim)
+- Otherwise it checks the last command character against the buffer, then the first, and works its way in until it reaches the middle.
+- It returns true if it reaches the middle with all characters matching.
+- It returns false the moment a character fails to match.
+- If it returns true for a match of that command against the buffer, it logs the index and the command length and keeps searching.
+- If it finds another match against a longer command it updates the index.
+- For internal commands, a switch statement was implimented and optimised to check each item as efficiently as possible. This also increased speed.
+-- This reduced the time to search significantly, for example command match of 227 microsecs was reduced to 58 microsecs in a 16 item command list.
+-- Theory: The probablility of the last and first characters of a command and the buffer matching should be much lower than for the first and second or third (etc). For example commands 'set int 1234' and 'set float 1.2' match the first four characters but not the last character, so by checking the last character first they are rejected on the first iteration rather than the fourth.
+Swapped query and help in internal commands so they can be searched faster
+Removed enable command from internal commands because ... its stupid, and you should use locks instead.
+Moved printing of reload and comment characters so they are visible even if internal commands are not.
+Added a method of hiding commands from the command menu. Putting the '-' character at the start of the help text will prevent the command from printing.
+
+Commander 2.1.0
+
+Fixed a bug where CR was not ignored on a blank line.
+Fixed a bug where getString was not recognising the custom delimiter.
+Changes streamType_t enum so undefines streamtype is zero.
+Expanded the settings register to 32 bits and moved autoFormat and locked bits from state register to settings register.
+Removed PRINT_LINE_DELAY and replaced with setPrintDelay(uint8_t dTime) uint8_t getPrintDelay() and printDelay(bool enable) to allow a delay from 0-255 millis after a line is printed. Default is off with zero time.
+Changed commandListEntries to a uint8_t - Command lists must have no more than 256 items!
+Fixed a bug where countItems() will return 1 if there are no items.
+Added a benchmarking system using macros.
+Added a streamMode option so raw data streaming can be supported.
+Changed start stop and set stream method names to Streaming (instead of stream) to remove ambiguity over methods relating to the Stream objects
+Added setStreamingMode() and getStreamingMode() methods.
+Removed the isCommandStart() and isCommandChar() methods and rearranged the command buffer state machine to use one bit. Commands can now start with any ASCII character.
+Removed redundant settings register values.
+Renames streamMode and streamOn bits as dataStreamMode and dataStreamOn.
+
+Commander 2.0.0
+
+Re-worked several methods and method names and probably broke several things, for example setLockType(bool) replaces enableHardLock(), commandPrompt(bool) replaces enablePrompt() and disablePrompt(). Setting parameters like these are now all done by passing an argument, and macros for ON and OFF are defined.
+errorMessagesEnabled now controls all internal messages so disabling them will prevent replies from internal commands like 'echo' or 'U'
+bugfix: internal commands did not check length so, for example, sending helpaxfgqerg was recognised as a help command
+Added PRINT_LINE_DELAY macro - if defined at the start of a sketch it will insert the defined marco before a line of text is printed - used to slow down transmission when sending many lines of data so a slow reciever can handle it.
+Added a defaultHandler function pointer that will be called whenever an unknown command is found. The user can now attach their own command handler for dealing with unrecognised commands. If not specified, the internal handler will be used.
+Added a method that returns the number of items in the command list.
+Added a method to return a String with the command help text for a specified item in the command list.
+Added a method that returns the number of items in the internal command list.
+Added a method to return a String with the command and help text for a specified item in the internal command list.
+Added a hide Internal Commands bit to prevent internal commands being displayed in help.
+Added an enable internal commands bit to stop internal commands from working.
+Added getString() method to extract sequential strings seperated by a space or special delimiter
+Added a countItems method to return the number of items in the payload. An idem is defined as a string with a space or delimChar at each end (or an end of line char)
+Renamed the eocChar into a delimChar, it is used as a delimiter between any items in the payload alongside the space character
+Added methods to set the delimChar and endOfLine char.
+Added two bit StreamType code to indicate if the attached stream is a serial port, file or web - this is to allow handlers to interrogate the Commander object calling the handler to adjust its response for that stream, for example by adding formatting to a response.
+Methods containsOn and containsTrue now work for both lower case and capitals.
+Updated the basic example sketch to demonstrate countItems() and getString() methods. These count and display all items in the payload.
+Added an HTML web server example using Commander to deliver formatted web pages.
+Removed updatePending() because this function is performed within update()
+
+Utilities:
+Added a function to convert an HTTP GET line to a command string - It finds the start and end of the GET message and converts and / or + chars to spaces. A line with "GET /help HTTP/1.1" will return a string containing "help" or "GET /setLED/on HTTP/1.1" will return "setLED on" The function can return a default string if nothing is found.
+String GET_CommandString(String serverGetLine, String defaultString)
+
+Commander 1.3.2:
+Changed getInt() to a template method so it will work for any int type (byte, long, unsigned etc)
+
+Commander 1.3.1:
+Restructured directories so everything is in src
+Prefabs now have their own directory and can be arranged into sub categories
+
+Commander 1.3.0:
+Fixed adding help system enable bit so help and query (?) commands can be disabled (this had not been added to the repo in 1.2.3)
+Added keywords.txt for syntax highlighting.
+Added includes=Commander.h and depends= to properties file
+Minor edits to readme
+Changes to how help is formatted
+
+Commander 1.2.3:
+Added enable bit for help system and query command. The help system can now be disabled if required.

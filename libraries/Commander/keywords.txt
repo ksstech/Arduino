@@ -1,0 +1,132 @@
+########################################################
+#	Syntax	Coloring	Map	for	Commander	Library	#
+########################################################
+#	Class
+###################################################################
+
+Commander	KEYWORD1
+
+###################################################################
+#	Methods	and	Functions
+###################################################################
+
+begin	KEYWORD2
+update	KEYWORD2
+printCommands	KEYWORD2
+setPassPhrase	KEYWORD2
+printPassPhrase	KEYWORD2
+setUserString	KEYWORD2
+printUserString KEYWORD2
+lock	KEYWORD2
+unlock	KEYWORD2
+setLockType	KEYWORD2
+getLockType	KEYWORD2
+isLocked	KEYWORD2
+feed	KEYWORD2
+hasPayload	KEYWORD2
+getPayload	KEYWORD2
+getPayloadString	KEYWORD2
+feedString	KEYWORD2
+loadString	KEYWORD2
+setPending  KEYWORD2
+endLine	KEYWORD2
+startStreaming	KEYWORD2
+stopStreaming	KEYWORD2
+setStream	KEYWORD2
+isStreaming	KEYWORD2
+transfer	KEYWORD2
+transferTo	KEYWORD2
+transferBack	KEYWORD2
+attachOutputPort	KEYWORD2
+getOutputPort	KEYWORD2
+attachAltPort	KEYWORD2
+getAltPort	KEYWORD2
+attachInputPort	KEYWORD2
+getInputPort	KEYWORD2
+deleteAltPort	KEYWORD2
+attachSpecialHandler KEYWORD2
+setBuffer	KEYWORD2
+attachCommands KEYWORD2
+reloadCommands KEYWORD2
+quick	KEYWORD2
+quickSetHelp	KEYWORD2
+quickSet	KEYWORD2
+quickGet	KEYWORD2
+print	KEYWORD2
+println	KEYWORD2
+add	KEYWORD2
+setPrefix	KEYWORD2
+startPrefix	KEYWORD2
+setPostfix	KEYWORD2
+startPostfix	KEYWORD2
+startFormatting	KEYWORD2
+autoFormat	KEYWORD2
+printCommandPrompt	KEYWORD2
+containsTrue	KEYWORD2
+containsOn	KEYWORD2
+containsOff KEYWORD2
+containsFalse KEYWORD2
+delimiters KEYWORD2
+addDelimiter KEYWORD2
+commentChar	KEYWORD2
+reloadChar	KEYWORD2
+endOfLineChar	KEYWORD2
+setPrintDelay KEYWORD2
+printDelay KEYWORD2
+echo KEYWORD2
+printComments	KEYWORD2
+echoToAlt	KEYWORD2
+copyRepyAlt	KEYWORD2
+commandProcessor	KEYWORD2
+stripCR	KEYWORD2
+multiCommander	KEYWORD2
+errorMessages	KEYWORD2
+commandPrompt	KEYWORD2
+showHelp	KEYWORD2
+internalCommands	KEYWORD2
+showInternalCommands	KEYWORD2
+settings	KEYWORD2
+portSettings	KEYWORD2
+getInt	KEYWORD2
+getFloat	KEYWORD2
+getDouble	KEYWORD2
+countItems KEYWORD2
+printCommandList	KEYWORD2
+printCommanderVersion	KEYWORD2
+printAlt	KEYWORD2
+printAltln	KEYWORD2
+writeAlt	KEYWORD2
+cmdHandler	KEYWORD2
+getCommandList KEYWORD2
+getCommandListLength KEYWORD2
+getCommandItem KEYWORD2
+getInternalCommandLength KEYWORD2
+getInternalCommandItem KEYWORD2
+getReadIndex KEYWORD2
+chain KEYWORD2
+unchain KEYWORD2
+autoChain KEYWORD2
+setStreamType KEYWORD2
+getStreamType KEYWORD2
+
+###################################################################
+#	Variables
+###################################################################
+
+bufferString	KEYWORD1
+commanderName	KEYWORD1
+promptCharacter	KEYWORD1
+eocCharacter	KEYWORD1
+prefixString	KEYWORD1
+postfixString	KEYWORD1
+portSettings_t	KEYWORD3
+commandList_t	KEYWORD3
+
+###################################################################
+#	Constants
+###################################################################
+
+UNDEFINED_STREAM KEYWORD3
+SERIAL_STREAM KEYWORD3
+FILE_STREAM KEYWORD3
+WEB_STREAM KEYWORD3
