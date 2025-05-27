@@ -1,5 +1,6 @@
 
-#if 1
+// Static buffer
+
 class CharBuffer {
   private:
     static const int MAX_SIZE = 128;  // You can adjust as needed
@@ -86,36 +87,3 @@ class CharBuffer {
         return status;
     }
 };
-
-#else
-
-class CharBuffer {
-private:
-    String buffer;
-
-public:
-    // Constructor
-    CharBuffer() : buffer("") {}
-
-    // Append characters from a stream
-    void appendFrom(Stream& stream) {
-        while (stream.available()) {
-            char c = (char)stream.read();
-            buffer += c;
-        }
-    }
-
-    // Get the number of characters in the buffer
-    int length() const { return buffer.length(); }
-
-    // Get the current buffer content
-    const String& get() const { return buffer; }
-
-    // Reset the buffer
-    void reset() { buffer = ""; }
-
-    // Check if a line terminator exists in the buffer
-    bool hasLine() const { return (buffer.indexOf('\r') != -1 || buffer.indexOf('\n') != -1); }
-};
-
-#endif
