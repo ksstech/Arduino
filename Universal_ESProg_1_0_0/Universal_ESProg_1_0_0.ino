@@ -1,6 +1,8 @@
 /* ESProg Demo software
    
     Copyright (c) 2017-2027 Next Evolution SRL. All rights reserved.
+    Copyright (c) 2025 Andre M. Maree / KSS Technologies (pty) Ltd. All rights reserved
+
   This file is part of the ESProg demo software package.
 
   This fostware is distributed as e demo software for ESPProg v6.2b board,
@@ -11,15 +13,6 @@
   Serial Debug   -> port 23
   Firmware upload -> port 24
   ESProg Serial   -> port 25
-
-  Commands:
-
-  Test :    esptool.py --chip esp32 --port socket://192.168.0.28:24 --before default_reset --after hard_reset flash_id
-  FW upload:  esptool.py --chip esp32 --port socket://192.168.0.28:24 write_flash  0x10000 C:\Users\TJ\Desktop\tmp\FTP_TMP\Blink.bin
-  FORCE RESET : esptool.py --chip esp32 --port socket://192.168.1.234:24 flash_id
-
-  FULL Upload including BOOT
-  esptool.py --chip esp32 --port socket://192.168.1.234:24 write_flash 0xe000  C:\Users\TJ\Desktop\tmp\FTP_TMP\boot_app0.bin 0x1000 C:\Users\TJ\Desktop\tmp\FTP_TMP\bootloader_qio_80m.bin 0x10000 C:\Users\TJ\Desktop\tmp\FTP_TMP\Blink.bin 0x8000 C:\Users\TJ\Desktop\tmp\FTP_TMP\Blink.partitions.bin
 
   WARNING!!
   USE --no-stub option for slow unreliable connections!!
@@ -60,43 +53,57 @@
 */
 
 #include <WiFi.h>
-#include <Commander.h>
+#include <Commander.h>              // Add Commander by Bill Bigge v4.2.3
 #include <StaticBuffer.h>
 #include <DebugDefinitions.h>
 
+// UART0
+#define UART0_BAUD  115200
+#define RXD0  3
+#define TXD0  1
+#define HOST_CLI_PORT   25    // TELNET port -> UART0 (Host CLI) interface
+
 // UART1
-#define RXD1 34 
-#define RTS1 32
-#define TXD1 33
-#define DTR1 23
+#define UART1_BAUD  115200
+#define RXD1  34 
+#define TXD1  33
+#define RTS1  32
+#define DTR1  23
+#define TARGET_CLI_PORT 23    // TELNET port -> UART1 (Target CLI) interface
 
 // UART2
-#define RXD2 35 
-#define DTR2 25
-#define TXD2 26
-#define RTS2 27 
-
-#define UART0_BAUD  115200
-#define UART1_BAUD  115200
 #define UART2_BAUD  256000
-//  set 115200  128000  192000  230400  256000  345600  384000  460800  512000  576000
-//  get 115942  128000  192771  231884  256000  345665  384038  460929  512000  576057
-// Tested with 0x20000 read_flash
-//      0/5     0/5     5/5     0/5     2/5     1/5     0/5     0/5     0/5     0/5
-// Tested with 0x40000 read_flash
-//                      3/5
-// Tested with 0x60000 read_flash
-//                      1/5             0/10
+#define RXD2  35 
+#define TXD2  26
+#define RTS2  27
+#define DTR2  25
+#define TARGET_PGM_PORT 24    // TELNET port -> UART2 (Target PGM) interface
+
+#define WIFI_SSID "irmacos"
+#define WIFI_PSWD "Irm@C0$1"
+#define USE_UART1_2_SAME_PINS
+
+#ifdef USE_UART1_2_SAME_PINS
+  #define DTRx  DTR1
+  #define RTSx  RTS1    
+#else
+  #define DTRx  DTR2
+  #define RTSx  RTS2
+#endif
 
 Commander MyCmdr;
 CharBuffer MyBuf;
 
-WiFiServer ServerTargetCLI(23);     // TELNET port 23 -> UART1 (Target CLI) interface
-WiFiClient ClientTargetCLI;
-WiFiServer ServerTargetPGM(24);     // TELNET port 24 -> UART2 (Target PGM) interface
-WiFiClient ClientTargetPGM;
-WiFiServer ServerHostCLI(25);       // TELNET port 25 -> UART0 (Host CLI) interface
+WiFiServer ServerHostCLI(HOST_CLI_PORT);
 WiFiClient ClientHostCLI;
+
+WiFiServer ServerTargetCLI(TARGET_CLI_PORT);
+WiFiClient ClientTargetCLI;
+
+WiFiServer ServerTargetPGM(TARGET_PGM_PORT);
+WiFiClient ClientTargetPGM;
+
+// ###################################### Commander handlers #######################################
 
 bool restartHandler(Commander &Cmdr) {
   Cmdr.println("... Restarting ESP32!");
@@ -108,33 +115,33 @@ bool restartHandler(Commander &Cmdr) {
 bool resetHandler(Commander &Cmdr) {
   static int rst = 0;
   bool dtr = (ClientTargetPGM && ClientTargetPGM.connected());
-  digitalWrite(DTR1, !dtr);
+    digitalWrite(DTRx, !dtr);
   if (dtr == 1 ) {
     if (rst == 0) {
-        digitalWrite(DTR1, LOW);
+        digitalWrite(DTRx, LOW);
         delay(50);
-        digitalWrite(RTS1, LOW);
+        digitalWrite(RTSx, LOW);
         delay(50);
         rst = 1;
         Cmdr.println("RESET Target" strNL "Programming target ... ");
         delay(50);
-        digitalWrite(RTS1, HIGH);
+        digitalWrite(RTSx, HIGH);
         delay(50);
     }
   } else if (rst == 1) {
     rst = 0;
     Cmdr.println("Done.");
-    digitalWrite(DTR1, HIGH);
+    digitalWrite(DTRx, HIGH);
     delay(50);
-    digitalWrite(RTS1, LOW);
+    digitalWrite(RTSx, LOW);
     delay(50);
-    digitalWrite(RTS1, HIGH);
+    digitalWrite(RTSx, HIGH);
   }
   return 0;
 }
 
 bool reportHandler(Commander &Cmdr) {
-  Cmdr.println("#####################" strNL "ESProg adapter v2.3.4" strNL "#####################");
+  Cmdr.println("#####################" strNL "ESProg adapter v1.0.0" strNL "#####################");
   Cmdr.println("# Prompt=" + String(Cmdr.commandPrompt()));
   Cmdr.println("# Echo=" + String(Cmdr.echo()));
   Cmdr.println("# CmndProc=" + String(Cmdr.commandProcessor()));
@@ -187,54 +194,65 @@ bool flashbaudHandler(Commander &Cmdr) {
   return 0;
 }
 
+bool loglevelHandler(Commander &Cmdr) {
+  int myLogLevel = 0;
+  if (Cmdr.countItems() == 1 && Cmdr.getInt(myLogLevel) && myLogLevel >= 0 && myLogLevel <= 7) {
+    esp_log_level_set("*", (esp_log_level_t)myLogLevel);
+    Cmdr.println("Log level set to " + String(myLogLevel));
+  } else {
+    Cmdr.println("Invalid <loglevel>, 0 <= loglevel <= 7");
+  }
+  return 0;
+}
+
 const commandList_t MyCommands[] = {
   { "report", reportHandler, "Report dynamic config" },
   { "restart", restartHandler, "Restart the HOST" },
   { "reset", resetHandler, "Reset the TARGET" },
   { "access", accessHandler, "Access Wifi with ssid & password" },
   { "flashbaud", flashbaudHandler, "Set target flash baudrate" },
+  { "log", loglevelHandler, "Set console log level" },
 };
 
-void initialiseCommander(void) {
-  Serial0.begin(UART0_BAUD);
+// ###################################### Init UART & TELNET #######################################
+
+void initialiseHost(void) {
+  Serial0.begin(UART0_BAUD, SERIAL_8N1, RXD0, TXD0);
+  // start Commander
   MyCmdr.begin(&Serial0, MyCommands, sizeof(MyCommands));
   MyCmdr.echo(true);
-  MyCmdr.echoToAlt(true);
   MyCmdr.commandPrompt(true);
-}
-
-void initialiseHostCLI(void) {
+  // Connect to default WiFi AccessPoint
+  connectHandler(MyCmdr, WIFI_SSID, WIFI_PSWD);
   ServerHostCLI.begin();
   ServerHostCLI.setNoDelay(true);
 }
 
-void initialiseTargetCLI(void) {
+void initialiseTarget(void) {
   Serial1.begin(UART1_BAUD, SERIAL_8N1, RXD1, TXD1);
+  pinMode(DTR1, OUTPUT);
+  pinMode(RTS1, OUTPUT);
   ServerTargetCLI.begin();
   ServerTargetCLI.setNoDelay(true);
+  #ifdef USE_UART1_2_SAME_PINS
+    Serial2.begin(UART2_BAUD, SERIAL_8N1, RXD1, TXD1);
+  #else
+    Serial2.begin(UART2_BAUD, SERIAL_8N1, RXD2, TXD2);
+    pinMode(DTR2, OUTPUT);
+    pinMode(RTS2, OUTPUT);
+    ServerTargetPGM.begin();
+    ServerTargetPGM.setNoDelay(true);
+  #endif
+  digitalWrite(DTRx, HIGH);
+  digitalWrite(RTSx, HIGH);
 }
 
-void initialiseTargetPGM(void) {
-  Serial2.begin(UART2_BAUD, SERIAL_8N1, RXD1, TXD1);
-  ServerTargetPGM.begin();
-  ServerTargetPGM.setNoDelay(true);
-}
-
-void initialiseTargetGPIO(void) {
-  pinMode(DTR1, OUTPUT);
-  digitalWrite(DTR2, HIGH);
-  pinMode(RTS1, OUTPUT);
-  digitalWrite(RTS2, HIGH);
-}
+// ######################################### Setup handler #########################################
 
 void setup() {
-  initialiseCommander();
-  connectHandler(MyCmdr, "irmacos", "Irm@C0$1");
-  initialiseHostCLI();
-  initialiseTargetCLI();
-  initialiseTargetPGM();
-  initialiseTargetGPIO();
-  reportHandler(MyCmdr);
+  initialiseHost();                                  //  Host UART + CLI
+  initialiseTarget();
+  //reportHandler(MyCmdr);
 }
 
 void handleSerialToTelnet(Stream& In, WiFiClient& Out) {
@@ -248,6 +266,8 @@ void handleSerialToTelnet(Stream& In, WiFiClient& Out) {
     }
   }
 }
+
+// ####################################### Main loop handler #######################################
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -264,11 +284,19 @@ void loop() {
   if (ServerHostCLI.hasClient()) {      // handle Host CLI connection request via TCP
     ClientHostCLI = ServerHostCLI.accept();
     if (ClientHostCLI) {
+    #if 0
+      MyCmdr.attachInputPort(&ClientHostCLI);
+      MyCmdr.attachOutputPort(&ClientHostCLI);
+      MyCmdr.attachAltPort(&Serial0);
+    #elif 1
+      MyCmdr.attachInputPort(&ClientHostCLI);
       MyCmdr.attachAltPort(&ClientHostCLI);
-      MyCmdr.echoToAlt(1);
-      MyCmdr.copyRepyAlt(1);
+    #endif
+      MyCmdr.echoToAlt(true);
+      MyCmdr.copyRepyAlt(true);
       MyCmdr.print("Host CLI connect: ");
-      MyCmdr.println(ClientHostCLI.remoteIP());
+      MyCmdr.print(ClientHostCLI.remoteIP());
+      MyCmdr.println(":" + String(HOST_CLI_PORT));
     } else {
       MyCmdr.println("Host CLI connect: failed");
     }
@@ -295,7 +323,8 @@ void loop() {
     ClientTargetCLI = ServerTargetCLI.accept();
     if (ClientTargetCLI) {
       MyCmdr.print("Target CLI connect: ");
-      MyCmdr.println(ClientTargetCLI.remoteIP());
+      MyCmdr.print(ClientTargetCLI.remoteIP());
+      MyCmdr.println(":" + String(TARGET_CLI_PORT));
     } else {
       MyCmdr.println("Target CLI connect: failed");
     }
@@ -322,7 +351,8 @@ void loop() {
     ClientTargetPGM = ServerTargetPGM.accept();
     if (ClientTargetPGM) {
       MyCmdr.print("Target PGM connect: ");
-      MyCmdr.println(ClientTargetPGM.remoteIP());
+      MyCmdr.print(ClientTargetPGM.remoteIP());
+      MyCmdr.println(":" + String(TARGET_PGM_PORT));
     } else {
       MyCmdr.println("Target PGM connect: failed");
     }

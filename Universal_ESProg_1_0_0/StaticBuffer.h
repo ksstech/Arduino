@@ -1,4 +1,3 @@
-
 // Static buffer
 
 class CharBuffer {
