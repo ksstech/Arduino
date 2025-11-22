@@ -12,5 +12,5 @@ void reportMCU(void) {
 void reportMEM(void) {
   uint32_t flashSize;
   esp_flash_get_physical_size(NULL, &flashSize);
-  fmtMessageLn("Total Flash:%dMB  Heap: %d/%dB  PSRAM: %d/%dB", flashSize>>20, ESP.getHeapSize(), ESP.getFreeHeap(), ESP.getPsramSize(), ESP.getFreePsram());
+  fmtMessageLn("Total Flash:%dMB  Heap: %d used of %dB total  PSRAM: %d/%dB", flashSize>>20, ESP.getFreeHeap(), ESP.getHeapSize(), ESP.getPsramSize(), ESP.getFreePsram());
 }
