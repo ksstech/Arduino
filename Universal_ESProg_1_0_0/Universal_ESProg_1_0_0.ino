@@ -54,8 +54,8 @@
 
 #include <WiFi.h>
 #include <Commander.h>              // Add Commander by Bill Bigge v4.2.3
-#include <StaticBuffer.h>
-#include <DebugDefinitions.h>
+#include <../libraries/PrivateLibs/StaticBuffer.h>
+#include <../libraries/PrivateLibs/FormattedMessages.h>
 
 // UART0
 #define UART0_BAUD  115200
