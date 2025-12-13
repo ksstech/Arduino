@@ -188,6 +188,7 @@ void testOneWire(void) {
           #if defined(RS01)
             digitalWrite(LED1, HIGH);
           #endif
+          memset(currAddress, 0, 8);
           // Check if tag is known, defined in table above...
           for (int key = 0; key < (sizeof(OWkeys) / sizeof(currAddress)); ++key) {
             if (memcmp(OWkeys[key], currAddress, sizeof(currAddress)) == 0)
@@ -196,7 +197,8 @@ void testOneWire(void) {
              keynum = -1;
           }
           // report tag details
-          fmtMessage1Wire("\tFound ", currAddress);
+          fmtMessage("\t%d ",iCH);
+          fmtMessage1Wire("Found ", currAddress);
           fmtMessage("  %d (%s)" strNL, keynum, (keynum > -1) ? "defined" : "unknown");
           delay(PAUSE);
           #if defined(RS01)
@@ -205,7 +207,7 @@ void testOneWire(void) {
         }
         oneWire.wireResetSearch();
       } else {
-        sysMessageLn("\tNo devices on 1-Wire bus");
+        fmtMessageLn("\tNo devices on 1-Wire bus %d", iCH);
       }
       //yield();
     }
