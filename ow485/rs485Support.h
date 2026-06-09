@@ -5,15 +5,16 @@
 #include <platform-ow485.h>
 
 // format content control options
-#define PO_ADDR                   	0x0001
-#define PO_UPTIME                 	0x0002
-#define PO_ONEWIRE                	0x0004
-#define PO_RLY_LED                	0x0008
-#define PO_EEPROM                 	0x0010
-#define PO_USERROW                	0x0020
-#define PO_FIRMWARE               	0x0040
-#define PO_CMDBUF                 	0x0080
-#define PO_SYSSTAT                	0x0100
+#define PO_RUNTIME                 	(1 << __COUNTER__)
+#define PO_UPTIME                 	(1 << __COUNTER__)
+#define PO_ADDR                   	(1 << __COUNTER__)
+#define PO_ONEWIRE                	(1 << __COUNTER__)
+#define PO_RLY_LED                	(1 << __COUNTER__)
+#define PO_EEPROM                 	(1 << __COUNTER__)
+#define PO_USERROW                	(1 << __COUNTER__)
+#define PO_FIRMWARE               	(1 << __COUNTER__)
+#define PO_CMDBUF                 	(1 << __COUNTER__)
+#define PO_SYSSTAT                	(1 << __COUNTER__)
 
 #define PRINT_BUFSIZE				128
 
@@ -21,7 +22,7 @@ void rs485Setup(void);
 
 void serialWrite(const char *);
 
-void serialVPrintF(const char *, va_list);
+//void serialVPrintF(const char *, va_list);
 
 void serialPrintF(const char *, ...);
 

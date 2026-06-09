@@ -110,11 +110,17 @@
  */
 
 // BUILD definitions required by includes below...
-#define DEBUG_LEVEL               1         // 0=disabled, 1=errors, 2=???, 3=verbose
+#define DEBUG_TRACK     0x0001
+#define DEBUG_CMDBUF    0x0002
+#define DEBUG_1WIRE     0x0004
+#define DEBUG_PWM       0x0008
+#define DEBUG_ADDRESS   0x0010
+
+#define DEBUG_LEVEL     0x0005
 
 #include <Arduino.h>
 #include <USERSIG.h>
-#include <platform-ow485.h>                 // hardware platform related, not application specific
+#include <platform-ow485.h>  // hardware platform related, not application specific
 
 #include "rs485Support.h"
 #include "StatusLED.h"
@@ -124,17 +130,17 @@
 // UART Buffer sizes
 #undef SERIAL_TX_BUFFER_SIZE
 #undef SERIAL_RX_BUFFER_SIZE
-#define SERIAL_TX_BUFFER_SIZE     32
-#define SERIAL_RX_BUFFER_SIZE     32
+#define SERIAL_TX_BUFFER_SIZE 32
+#define SERIAL_RX_BUFFER_SIZE 32
 
 // USERROW usage
-#define UR_IDX_DEVID              0         // first byte in the array
+#define UR_IDX_DEVID 0  // first byte in the array
 
 /* ── Pin definitions ────────────────────────────────────────────────────── */
 static constexpr uint8_t PIN_RELAY = PIN_PA2;
 static constexpr uint8_t PIN_1WIRE = PIN_PA4;
-static constexpr uint8_t PIN_LED1  = PIN_PA5;
-static constexpr uint8_t PIN_LED2  = PIN_PA3;
+static constexpr uint8_t PIN_LED1 = PIN_PA5;
+//static constexpr uint8_t PIN_LED2 = PIN_PA3;
 
 /* ── LED: 2-channel instance ────────────────────────────────────────────── */
 /*
@@ -145,8 +151,8 @@ static constexpr uint8_t PIN_LED2  = PIN_PA3;
  * The array length N_CH is deduced by the template from the initialiser;
  * adding a third element automatically generates a 3-channel StatusLED.
  */
-static const uint8_t kLEDPins[] = { PIN_LED1, PIN_LED2 };
-StatusLED<2> leds(kLEDPins);
+static const uint8_t kLEDPins[] = { PIN_LED1 /*, PIN_LED2 */ };
+StatusLED<1> leds(kLEDPins);
 
 /* ── Peripheral objects ─────────────────────────────────────────────────── */
 OneWireTag owTag(PIN_1WIRE);
@@ -154,51 +160,45 @@ OneWireTag owTag(PIN_1WIRE);
 uint8_t DevID, owAddr;
 uint32_t countRD0, countRD1, countRD2;
 uint32_t lastMsRelay, lastMsOneWire;
-static bool stateRelay  = false;
+static bool stateRelay = false;
 
 const char helpText[] =
-  "All commands should be sent as a comma separated (CSV) ASCII string with NO spaces and ONLY an NL terminator\n" \
-  "Format of a command is XX,??[,xx..zz] where\n" \
-  " XX  2 byte hexadecimal address, possibly limited in range\n" \
-  " ??  2 byte alphanumeric command being one of the following\n" \
+  "All commands should be sent as a comma separated (CSV) ASCII string with NO spaces and ONLY an NL terminator\n"
+  "Format of a command is XX,??[,xx..zz] where\n"
+  " XX  2 byte hexadecimal address, possibly limited in range\n"
+  " ??  2 byte alphanumeric command being one of the following\n"
   "     AP  Actuator command/config\n"
   "         rr[,fi[,on[,fo[,of]]]]\n"
-  "     CA  Config Address, store hex value as new device ID\n" \
-  "     CG  Config GPIO as in/out based on additional parameters\n" \
-  "     SA  System Address\n" \
-  "         YY being the requested device address in hex\n" \
-  "     SI  System Info request\n" \
-  "         { FW ver, MCU clock, MCU ID, Silicon Revision }\n" \
-  "     SR  System Reboot\n" \
-  "     OR  Read IButton data\n" \
-  "     OW  Write new data on Ibutton device\n" \
-  "         AB9876543210 being the address in hex to be written to the tag\n" \
-  "     RT  Relay On\n" \
-  "     RF  Relay Off\n" \
-  "     LT  LED On\n" \
-  "     LF  LED Off\n" \
-  " 10,rT  -or-  11,Ca,27  -or-  1D,or  -or- 18,OW,AB9876543210  -or- 15,ap,ffff,1000,2000,3000,4444\n";
+  "     CA  Config Address, store hex value as new device ID\n"
+  "     CG  Config GPIO as in/out based on additional parameters\n"
+  "     SA  System Address\n"
+  "         YY being the requested device address in hex\n"
+  "     SI  System Info request\n"
+  "         { FW ver, MCU clock, MCU ID, Silicon Revision }\n"
+  "     SR  System Reboot\n"
+  "     OR  Read IButton data\n"
+  "     OW  Write new data on Ibutton device\n"
+  "         AB9876543210 being the address in hex to be written to the tag\n"
+  "     RT  Relay On\n"
+  "     RF  Relay Off\n"
+  "     LT  LED On\n"
+  "     LF  LED Off\n"
+  " 10,rT  /  11,Ca,27  /  1D,or  / 18,OW,AB9876543210  /  15,ap,0,ffff,1000,2000,3000,4444\n ";
 
 /* ══════════════════════════════════════════════════════════════════════════
-   LED preset helpers  —  call from anywhere to change LED behaviour
-   ══════════════════════════════════════════════════════════════════════════ */
+ LED preset helpers  —  call from anywhere to change LED behaviour
+ ══════════════════════════════════════════════════════════════════════════ */
 
-/** Channel 0: slow breath, infinite */
-void ledHeartbeat(void) { leds.configure(0, LED_INFINITE, 2, 1, 2, 1); }
+void ledHeartbeat(uint8_t Ch) { leds.configure(Ch, LED_INFINITE, 2, 1, 2, 1); }
 
-/** Channel 0: three fast blinks (1 s on, 1 s off) */
-void ledError(void) { leds.configure(0, 3, 0, 1, 0, 1); }
+void ledError(uint8_t Ch) { leds.configure(Ch, 3, 0, 1, 0, 1); }
 
-/** Channel 0: single long pulse */
-void ledAck(void) { leds.configure(0, 1, 1, 2, 1, 0); }
+void ledAck(uint8_t Ch) { leds.configure(Ch, 1, 1, 2, 1, 0); }
 
-/** Channel 0: on */
-void ledOn(void) { leds.configure(0, LED_INFINITE, 0, LED_INFINITE, 0, 0); }
+void ledOn(uint8_t Ch) { leds.configure(Ch, LED_INFINITE, 0, LED_INFINITE, 0, 0); }
 
-/** Channel 0: off */
-void ledOff(void) { leds.configure(0, LED_STOP, 0, 0, 0, 0); }
+void ledOff(uint8_t Ch) { leds.configure(Ch, LED_STOP, 0, 0, 0, 0); }
 
-/** All channels: off */
 void ledsAllOff(void) { leds.stopAll(); }
 
 void actuatePWM(void) {
@@ -206,15 +206,15 @@ void actuatePWM(void) {
   int8_t Idx = 0;
   long int iVal;
   do {
-    if (DEBUG_LEVEL > 2) serialPrintOptions(PO_CMDBUF);
-    iVal = hostConsumeHexValue(4);         // max 4 hex digits
-    if (iVal == -1)                        // error ?
-      break;                               // yes, break out
-    para[Idx++] = (uint16_t) iVal;         // no, store value
+    if (DEBUG_LEVEL & DEBUG_CMDBUF) serialPrintOptions(PO_CMDBUF);
+    iVal = hostConsumeHexValue(4);  // max 4 hex digits
+    if (iVal == -1)                 // error ?
+      break;                        // yes, break out
+    para[Idx++] = (uint16_t)iVal;   // no, store value
   } while (Idx < 6);
-  #if (DEBUG_LEVEL > 0)
+  #if (DEBUG_LEVEL & DEBUG_PWM)
     serialPrintFOptions(PO_ADDR, "iVal=%lx Idx=%d 0=%x 1=%x 2=%x 3=%x 4=%x 5=%x", iVal, Idx,
-        para[0], para[1], para[2], para[3], para[4], para[5]);
+                      para[0], para[1], para[2], para[3], para[4], para[5]);
   #endif
   if (Idx == 0)
     return;
@@ -226,11 +226,11 @@ void actuatePWM(void) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 void demoRelay(void) {
-    if (millis() - lastMsRelay < 5000UL)
-      return;
-    lastMsRelay = millis();
-    setRelayStatus(stateRelay  = !stateRelay);
-    serialPrintF("Relay: %s\n", stateRelay ? "ON" : "OFF");
+  if (millis() - lastMsRelay < 5000UL)
+    return;
+  lastMsRelay = millis();
+  setRelayStatus(stateRelay = !stateRelay);
+  serialPrintF("Relay: %s\n", stateRelay ? "ON" : "OFF");
 }
 
 void setRelayStatus(bool Status) { digitalWrite(pinRelay, Status); }
@@ -238,17 +238,18 @@ void setRelayStatus(bool Status) { digitalWrite(pinRelay, Status); }
 void systemSetAddress(void) {
   long int iVal = hostConsumeHexValue(2);
   if (iVal == -1) {
-    if (DEBUG_LEVEL > 2) serialPrintFOptions(PO_ADDR, "Invalid HEX");
+    if (DEBUG_LEVEL & DEBUG_ADDRESS) serialPrintFOptions(PO_ADDR, "Invalid HEX");
     return;
   }
-  USERSIG.update(UR_IDX_DEVID, DevID = owAddr = (uint8_t) iVal);
+  USERSIG.update(UR_IDX_DEVID, DevID = owAddr = (uint8_t)iVal);
   USERSIG.flush();
 }
 
 void systemReset(void) {
   serialPrintFOptions(PO_ADDR, "Rebooting");
-  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_8CLK_gc); //enable the WDT, minimum timeout
-  while (1); // spin until reset
+  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_8CLK_gc);  //enable the WDT, minimum timeout
+  while (1)
+    ;  // spin until reset
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -263,22 +264,21 @@ void oneWireReadCheck(void) {
 }
 
 void oneWireRead(void) {
-    /*
+  /*
      * readRaw() returns raw bytes regardless of CRC or family code.
      * Use during bring-up to see exactly what the tag is sending.
      * Switch to read() once the bus is confirmed working.
      */
-    owTag.readRaw();
-    if (owTag.result == OWResult::OK) {
-      OneWireTag::printRomCode(owTag.rom);
-      OneWireTag::printResult(owTag.result);
-    }
+  owTag.readRaw();
+  if (owTag.result == OWResult::OK)
+    owTag.printRomInfo(1);
 }
 
 void oneWireWrite(void) {
   const uint8_t serial[6] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB };
   OneWireTag::buildRomCode(serial, owTag.rom);
-  owTag.program();
+  owTag.program(0);
+  if (DEBUG_LEVEL & DEBUG_1WIRE) owTag.printRomInfo(1);   // shows what the tag actually contains after the attempt
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -286,52 +286,52 @@ void oneWireWrite(void) {
    ══════════════════════════════════════════════════════════════════════════ */
 
 void setup(void) {
-  rs485Setup();                         // Initialise RS485 serial comms
-  CmdBuf.reserve(32);                   // 2(addr) + 1(sep) + 2(cmd) + 12(code) + 1(NUL)
-  DevID = USERSIG.read(UR_IDX_DEVID);   // Setup Device ID to be used
-  if (DevID == 0xFF)                    // If no valid address set (yet)
-    DevID = 0x10;                       // use default
-  pinMode(pinRelay, OUTPUT);             // Initialise Relay GPIO
+  rs485Setup();                        // Initialise RS485 serial comms
+  CmdBuf.reserve(32);                  // 2(addr) + 1(sep) + 2(cmd) + 12(code) + 1(NUL)
+  DevID = USERSIG.read(UR_IDX_DEVID);  // Setup Device ID to be used
+  if (DevID == 0xFF)                   // If no valid address set (yet)
+    DevID = 0x10;                      // use default
+  pinMode(pinRelay, OUTPUT);           // Initialise Relay GPIO
   setRelayStatus(0);
   // initialise LED pin for PWM
   leds.configure(0, LED_INFINITE, 1, 1, 1, 1);
   leds.configure(1, 0, 0, 0, 0, 0);
-  if (DEBUG_LEVEL > 0) serialPrintFOptions(PO_ADDR|PO_FIRMWARE|PO_SYSSTAT, "Started\n");
+  if (DEBUG_LEVEL & DEBUG_TRACK) serialPrintFOptions(PO_ADDR | PO_FIRMWARE | PO_SYSSTAT, "Started\n");
 }
 
 void loop() {
-  leds.update();                                /* MUST be first: drive all LED state machines */
-  oneWireReadCheck();                           /* 1-Wire tag scan */
+  leds.update();      /* MUST be first: drive all LED state machines */
+  oneWireReadCheck(); /* 1-Wire tag scan */
   if (hostReadCmd()) {
-    if (DEBUG_LEVEL > 2) serialPrintOptions(PO_CMDBUF);
-    long int iVal = hostConsumeHexValue(2);     // read 1 or 2 hex address bytes
-    if (iVal != -1L) {                          // Value hex value found
+    if (DEBUG_LEVEL & DEBUG_CMDBUF)     serialPrintOptions(PO_CMDBUF);
+    long int iVal = hostConsumeHexValue(2);  // read 1 or 2 hex address bytes
+    if (iVal != -1L) {                       // Value hex value found
       owAddr = iVal;
       if (owAddr == DevID) {
         // save 2 bytes as actual command, remove from buffer [incl comma]
         char Command[3];
         iVal = hostConsumeString(Command, sizeof(Command));
-        if (DEBUG_LEVEL > 2) serialPrintFOptions(PO_CMDBUF, Command);
-        if (strncmp(Command, "OR", 2) == 0)       oneWireRead();
-        else if (strncmp(Command, "OW", 2) == 0)  oneWireWrite();
-        else if (strncmp(Command, "RT", 2) == 0)  setRelayStatus(1);
-        else if (strncmp(Command, "RF", 2) == 0)  setRelayStatus(0);
-        else if (strncmp(Command, "LT", 2) == 0)  ledOn();
-        else if (strncmp(Command, "LF", 2) == 0)  ledOff();
-        else if (strncmp(Command, "AP", 2) == 0)  actuatePWM();
-        else if (strncmp(Command, "SA", 2) == 0)  systemSetAddress();
-        else if (strncmp(Command, "SI", 2) == 0)  serialPrintOptions(PO_ADDR|PO_FIRMWARE|PO_UPTIME|PO_SYSSTAT|PO_RLY_LED|PO_ONEWIRE);
-        else if (strncmp(Command, "SR", 2) == 0)  systemReset();
-        else                                      serialPrintFOptions(PO_ADDR/* | PO_CHANNEL*/, helpText);
+        if (DEBUG_LEVEL & DEBUG_CMDBUF) serialPrintFOptions(PO_CMDBUF, Command);
+        if (strncmp(Command, "OR", 2) == 0) oneWireRead();
+        else if (strncmp(Command, "OW", 2) == 0) oneWireWrite();
+        else if (strncmp(Command, "RT", 2) == 0) setRelayStatus(1);
+        else if (strncmp(Command, "RF", 2) == 0) setRelayStatus(0);
+        else if (strncmp(Command, "LT", 2) == 0) ledOn(0);
+        else if (strncmp(Command, "LF", 2) == 0) ledOff(0);
+        else if (strncmp(Command, "AP", 2) == 0) actuatePWM();
+        else if (strncmp(Command, "SA", 2) == 0) systemSetAddress();
+        else if (strncmp(Command, "SI", 2) == 0) serialPrintOptions(PO_ADDR | PO_FIRMWARE | PO_UPTIME | PO_SYSSTAT | PO_RLY_LED | PO_ONEWIRE);
+        else if (strncmp(Command, "SR", 2) == 0) systemReset();
+        else serialWrite(helpText);
       } else {
-        if (DEBUG_LEVEL > 2) serialPrintFOptions(PO_ADDR, "Unknown Address");
+        if (DEBUG_LEVEL & DEBUG_TRACK) serialWrite("Unknown Address\n");
       }
     } else {
-      if (DEBUG_LEVEL > 2) serialPrintFOptions(PO_ADDR, "Invalid packet");
+      if (DEBUG_LEVEL > 2) serialWrite("Invalid packet\n");
     }
     // Reset ALL command buffer values
     CmdBuf = "";
   } else {
-      ++countRD2;                               // do whatever else requires attention.
+    ++countRD2;  // do whatever else requires attention.
   }
 }
