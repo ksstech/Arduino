@@ -59,11 +59,11 @@ static constexpr uint8_t OW_FAMILY_DS1990 = 0x01u;
 /* ── RW1990 write constants ─────────────────────────────────────────────── */
 static constexpr uint8_t RW_CMD_WRITE     = 0xD1u;
 static constexpr uint8_t RW_CMD_WRITE_ALT = 0xC1u;
-static constexpr uint8_t RW_PULSE_ONE_MS  = 5u;
-static constexpr uint8_t RW_PULSE_ZERO_MS = 10u;
+static constexpr uint8_t RW_PULSE_ONE_MS  = 6u;
+static constexpr uint8_t RW_PULSE_ZERO_MS = 12u;
 static constexpr uint8_t RW_RELEASE_MS    = 2u;
-static constexpr uint8_t RW_ENTER_MS      = 10u;
-static constexpr uint8_t RW_SETTLE_MS     = 20u;
+static constexpr uint8_t RW_ENTER_MS      = 2u;
+static constexpr uint16_t RW_SETTLE_MS    = 300u;
 
 /* ── Result codes ───────────────────────────────────────────────────────── */
 enum class OWResult : uint8_t {
@@ -96,15 +96,15 @@ public:
     uint32_t timestampMs;
 
     /* ── Read — results go into rom[] ─────────────────────────────────── */
-    OWResult readRaw();             ///< READ ROM → rom[], no family check
-    OWResult read();                ///< READ ROM → rom[], validates family
-    OWResult scanNext();            ///< SEARCH ROM → rom[]
+    OWResult readRaw();                         ///< READ ROM → rom[], no family check
+    OWResult read();                            ///< READ ROM → rom[], validates family
+    OWResult scanNext();                        ///< SEARCH ROM → rom[]
     void     resetSearch();
 
     /* ── Write / Program — data taken from rom[] ─────────────────────── */
-    OWResult write(bool useAltCmd = false);  ///< Burn rom[] to RW1990
-    OWResult verify();              ///< Read tag, compare to rom[]
-    OWResult program();             ///< Fill CRC in rom[7], write, verify
+    OWResult write(bool useAltCmd = false);     ///< Burn rom[] to RW1990
+    OWResult verify();                          ///< Read tag, compare to rom[]
+    OWResult program(bool useAltCmd);           ///< Fill CRC in rom[7], write, verify
 
     /* ── Utilities ────────────────────────────────────────────────────── */
     static uint8_t crc8(const uint8_t* data, uint8_t len);
@@ -112,6 +112,7 @@ public:
     static void    buildRomCode(const uint8_t* serial6, uint8_t* romCode);
     static void    printRomCode(const uint8_t* romCode);
     static void    printResult(OWResult r);
+    void    printRomInfo(bool reverse);
 
 private:
     volatile uint8_t* _vport;

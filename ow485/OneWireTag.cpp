@@ -27,6 +27,7 @@
  */
 
 #include "OneWireTag.h"
+#include "rs485Support.h"
 #include <string.h>    /* memcmp, memcpy */
 
 /* ── VPORT register offsets ─────────────────────────────────────────────── */
@@ -222,7 +223,7 @@ OWResult OneWireTag::write(bool useAltCmd)
             _writeBitRW((rom[byte] >> bit) & 0x01u);
         }
     }
-    _reset();
+    if (!_reset()) return _done(OWResult::NO_PRESENCE);
     delay(RW_SETTLE_MS);
     return _done(OWResult::OK);
 }
@@ -240,11 +241,11 @@ OWResult OneWireTag::verify()
     return _done(OWResult::OK);
 }
 
-OWResult OneWireTag::program()
+OWResult OneWireTag::program(bool useAltCmd)
 {
     if (rom[7] == 0x00u) rom[7] = crc8(rom, 7);
     if (crc8(rom, 7) != rom[7]) return _done(OWResult::CRC_ERROR);
-    const OWResult wr = write();
+    const OWResult wr = write(useAltCmd);
     if (wr != OWResult::OK) return wr;
     return verify();
 }
@@ -305,4 +306,25 @@ void OneWireTag::printResult(OWResult r)
         case OWResult::BUS_ERROR:    Serial.println(F("BUS_ERROR"));    break;
         default:                     Serial.println(F("UNKNOWN"));      break;
     }
+}
+
+void OneWireTag::printRomInfo(bool reverse)
+{
+    const char * pMsg;
+    switch (result) {
+        case OWResult::OK:           pMsg = "OK";           break;
+        case OWResult::NO_PRESENCE:  pMsg = "NO_PRESENCE";  break;
+        case OWResult::CRC_ERROR:    pMsg = "CRC_ERROR";    break;
+        case OWResult::WRONG_FAMILY: pMsg = "WRONG_FAMILY"; break;
+        case OWResult::VERIFY_FAIL:  pMsg = "VERIFY_FAIL";  break;
+        case OWResult::BUS_ERROR:    pMsg = "BUS_ERROR";    break;
+        default:                     pMsg = "UNKNOWN";      break;
+    }
+    char buf[48];
+    int iRV = snprintf(buf, sizeof(buf), "F=%02x [", rom[0]);
+    for (uint8_t i = 1; i < 7; ++i) {
+        iRV += snprintf(buf+iRV, sizeof(buf)-iRV, "%02x", reverse ? rom[7-i]: rom[i]);
+    }
+    iRV += snprintf(buf+iRV, sizeof(buf)-iRV, "] C=%02x (%d) %s\n", rom[7], (int)result, pMsg);
+    serialWrite(buf);
 }
