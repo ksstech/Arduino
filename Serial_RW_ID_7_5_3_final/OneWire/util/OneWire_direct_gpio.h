@@ -10,18 +10,19 @@
 // Platform specific I/O definitions
 
 #if defined(__AVR__)
-#define PIN_TO_BASEREG(pin)             (portInputRegister(digitalPinToPort(pin)))
 #define PIN_TO_BITMASK(pin)             (digitalPinToBitMask(pin))
 #define IO_REG_TYPE uint8_t
 #define IO_REG_BASE_ATTR asm("r30")
 #define IO_REG_MASK_ATTR
-#if defined(__AVR_ATmega4809__)
-#define DIRECT_READ(base, mask)         (((*(base)) & (mask)) ? 1 : 0)
-#define DIRECT_MODE_INPUT(base, mask)   ((*((base)-8)) &= ~(mask))
-#define DIRECT_MODE_OUTPUT(base, mask)  ((*((base)-8)) |= (mask))
-#define DIRECT_WRITE_LOW(base, mask)    ((*((base)-4)) &= ~(mask))
-#define DIRECT_WRITE_HIGH(base, mask)   ((*((base)-4)) |= (mask))
+#if ((__AVR_ARCH__ == 102) || (__AVR_ARCH__ == 103) || (__AVR_ARCH__ == 104))
+#define PIN_TO_BASEREG(pin)             ((volatile uint8_t*)((digitalPinToPort(pin))<<2))
+#define DIRECT_READ(base, mask)         ((*((base)+2) & (mask)) ? 1 : 0)
+#define DIRECT_MODE_INPUT(base, mask)   ((*(base)) &= ~(mask))
+#define DIRECT_MODE_OUTPUT(base, mask)  ((*(base)) |= (mask))
+#define DIRECT_WRITE_LOW(base, mask)    ((*((base)+1)) &= ~(mask))
+#define DIRECT_WRITE_HIGH(base, mask)   ((*((base)+1)) |= (mask))
 #else
+#define PIN_TO_BASEREG(pin)             (portInputRegister(digitalPinToPort(pin)))
 #define DIRECT_READ(base, mask)         (((*(base)) & (mask)) ? 1 : 0)
 #define DIRECT_MODE_INPUT(base, mask)   ((*((base)+1)) &= ~(mask))
 #define DIRECT_MODE_OUTPUT(base, mask)  ((*((base)+1)) |= (mask))
@@ -106,58 +107,18 @@
 // DO NOT CREATE GITHUB ISSUES for ESP support.  All ESP questions must be asked
 // on ESP community forums.
 #define PIN_TO_BASEREG(pin)             ((volatile uint32_t*) GPO)
-#define PIN_TO_BITMASK(pin)             (1UL << (pin))
+#define PIN_TO_BITMASK(pin)             (1 << pin)
 #define IO_REG_TYPE uint32_t
 #define IO_REG_BASE_ATTR
 #define IO_REG_MASK_ATTR
-
-static inline __attribute__((always_inline))
-void directModeInput(IO_REG_TYPE mask)
-{
-    if(mask > 0x8000)
-    {
-        GP16FFS(GPFFS_GPIO(16));
-        GPC16 = 0;
-        GP16E &= ~1;
-    }
-    else
-    {
-        GPE &= ~(mask);
-    }
-}
-
-static inline __attribute__((always_inline))
-void directModeOutput(IO_REG_TYPE mask)
-{
-    if(mask > 0x8000)
-    {
-        GP16FFS(GPFFS_GPIO(16));
-        GPC16 = 0; 
-        GP16E |= 1;
-    }
-    else
-    {
-        GPE |= (mask);
-    }
-}
-static inline __attribute__((always_inline))
-bool directRead(IO_REG_TYPE mask)
-{
-    if(mask > 0x8000)
-        return GP16I & 0x01;
-    else
-        return ((GPI & (mask)) ? true : false);
-}
-
-#define DIRECT_READ(base, mask)             directRead(mask)
-#define DIRECT_MODE_INPUT(base, mask)       directModeInput(mask)
-#define DIRECT_MODE_OUTPUT(base, mask)      directModeOutput(mask)
-#define DIRECT_WRITE_LOW(base, mask)    (mask > 0x8000) ? GP16O &= ~1 : (GPOC = (mask))
-#define DIRECT_WRITE_HIGH(base, mask)   (mask > 0x8000) ? GP16O |= 1 : (GPOS = (mask))
+#define DIRECT_READ(base, mask)         ((GPI & (mask)) ? 1 : 0)    //GPIO_IN_ADDRESS
+#define DIRECT_MODE_INPUT(base, mask)   (GPE &= ~(mask))            //GPIO_ENABLE_W1TC_ADDRESS
+#define DIRECT_MODE_OUTPUT(base, mask)  (GPE |= (mask))             //GPIO_ENABLE_W1TS_ADDRESS
+#define DIRECT_WRITE_LOW(base, mask)    (GPOC = (mask))             //GPIO_OUT_W1TC_ADDRESS
+#define DIRECT_WRITE_HIGH(base, mask)   (GPOS = (mask))             //GPIO_OUT_W1TS_ADDRESS
 
 #elif defined(ARDUINO_ARCH_ESP32)
 #include <driver/rtc_io.h>
-#include <soc/gpio_struct.h>
 #define PIN_TO_BASEREG(pin)             (0)
 #define PIN_TO_BITMASK(pin)             (pin)
 #define IO_REG_TYPE uint32_t
@@ -167,14 +128,10 @@ bool directRead(IO_REG_TYPE mask)
 static inline __attribute__((always_inline))
 IO_REG_TYPE directRead(IO_REG_TYPE pin)
 {
-#if CONFIG_IDF_TARGET_ESP32C3
-    return (GPIO.in.val >> pin) & 0x1;
-#else // plain ESP32
     if ( pin < 32 )
         return (GPIO.in >> pin) & 0x1;
-    else if ( pin < 46 )
+    else if ( pin < 40 )
         return (GPIO.in1.val >> (pin - 32)) & 0x1;
-#endif
 
     return 0;
 }
@@ -182,38 +139,26 @@ IO_REG_TYPE directRead(IO_REG_TYPE pin)
 static inline __attribute__((always_inline))
 void directWriteLow(IO_REG_TYPE pin)
 {
-#if CONFIG_IDF_TARGET_ESP32C3
-    GPIO.out_w1tc.val = ((uint32_t)1 << pin);
-#else // plain ESP32
     if ( pin < 32 )
         GPIO.out_w1tc = ((uint32_t)1 << pin);
-    else if ( pin < 46 )
+    else if ( pin < 34 )
         GPIO.out1_w1tc.val = ((uint32_t)1 << (pin - 32));
-#endif
 }
 
 static inline __attribute__((always_inline))
 void directWriteHigh(IO_REG_TYPE pin)
 {
-#if CONFIG_IDF_TARGET_ESP32C3
-    GPIO.out_w1ts.val = ((uint32_t)1 << pin);
-#else // plain ESP32
     if ( pin < 32 )
         GPIO.out_w1ts = ((uint32_t)1 << pin);
-    else if ( pin < 46 )
+    else if ( pin < 34 )
         GPIO.out1_w1ts.val = ((uint32_t)1 << (pin - 32));
-#endif
 }
 
 static inline __attribute__((always_inline))
 void directModeInput(IO_REG_TYPE pin)
 {
-#if CONFIG_IDF_TARGET_ESP32C3
-    GPIO.enable_w1tc.val = ((uint32_t)1 << (pin));
-#else
     if ( digitalPinIsValid(pin) )
     {
-#if ESP_IDF_VERSION_MAJOR < 4      // IDF 3.x ESP32/PICO-D4
         uint32_t rtc_reg(rtc_gpio_desc[pin].reg);
 
         if ( rtc_reg ) // RTC pins PULL settings
@@ -221,25 +166,27 @@ void directModeInput(IO_REG_TYPE pin)
             ESP_REG(rtc_reg) = ESP_REG(rtc_reg) & ~(rtc_gpio_desc[pin].mux);
             ESP_REG(rtc_reg) = ESP_REG(rtc_reg) & ~(rtc_gpio_desc[pin].pullup | rtc_gpio_desc[pin].pulldown);
         }
-#endif
-	// Input
+
         if ( pin < 32 )
             GPIO.enable_w1tc = ((uint32_t)1 << pin);
         else
             GPIO.enable1_w1tc.val = ((uint32_t)1 << (pin - 32));
+
+        uint32_t pinFunction((uint32_t)2 << FUN_DRV_S); // what are the drivers?
+        pinFunction |= FUN_IE; // input enable but required for output as well?
+        pinFunction |= ((uint32_t)2 << MCU_SEL_S);
+
+        ESP_REG(DR_REG_IO_MUX_BASE + esp32_gpioMux[pin].reg) = pinFunction;
+
+        GPIO.pin[pin].val = 0;
     }
-#endif
 }
 
 static inline __attribute__((always_inline))
 void directModeOutput(IO_REG_TYPE pin)
 {
-#if CONFIG_IDF_TARGET_ESP32C3
-    GPIO.enable_w1ts.val = ((uint32_t)1 << (pin));
-#else
     if ( digitalPinIsValid(pin) && pin <= 33 ) // pins above 33 can be only inputs
     {
-#if ESP_IDF_VERSION_MAJOR < 4      // IDF 3.x ESP32/PICO-D4
         uint32_t rtc_reg(rtc_gpio_desc[pin].reg);
 
         if ( rtc_reg ) // RTC pins PULL settings
@@ -247,14 +194,20 @@ void directModeOutput(IO_REG_TYPE pin)
             ESP_REG(rtc_reg) = ESP_REG(rtc_reg) & ~(rtc_gpio_desc[pin].mux);
             ESP_REG(rtc_reg) = ESP_REG(rtc_reg) & ~(rtc_gpio_desc[pin].pullup | rtc_gpio_desc[pin].pulldown);
         }
-#endif
-        // Output
+
         if ( pin < 32 )
             GPIO.enable_w1ts = ((uint32_t)1 << pin);
         else // already validated to pins <= 33
             GPIO.enable1_w1ts.val = ((uint32_t)1 << (pin - 32));
+
+        uint32_t pinFunction((uint32_t)2 << FUN_DRV_S); // what are the drivers?
+        pinFunction |= FUN_IE; // input enable but required for output as well?
+        pinFunction |= ((uint32_t)2 << MCU_SEL_S);
+
+        ESP_REG(DR_REG_IO_MUX_BASE + esp32_gpioMux[pin].reg) = pinFunction;
+
+        GPIO.pin[pin].val = 0;
     }
-#endif
 }
 
 #define DIRECT_READ(base, pin)          directRead(pin)
@@ -466,40 +419,6 @@ void directWriteHigh(IO_REG_TYPE mask)
 #define DIRECT_WRITE_HIGH(base, mask)    directWriteHigh(mask)
 #define DIRECT_MODE_INPUT(base, mask)    directModeInput(mask)
 #define DIRECT_MODE_OUTPUT(base, mask)   directModeOutput(mask)
-
-#elif defined(__MBED__)
-
-#include "platform/mbed_critical.h"
-#include "DigitalInOut.h"
-#include <cmsis_os2.h>
-#define PIN_TO_BASEREG(pin)             (0)
-#define PIN_TO_BITMASK(pin)             (new mbed::DigitalInOut(digitalPinToPinName(pin)))
-#define IO_REG_TYPE                     mbed::DigitalInOut*
-#define IO_REG_BASE_ATTR
-#define IO_REG_MASK_ATTR
-#define DIRECT_READ(base, pin)          (*pin)
-#define DIRECT_WRITE_LOW(base, pin)     (*pin = 0)
-#define DIRECT_WRITE_HIGH(base, pin)    (*pin = 1)
-#define DIRECT_MODE_INPUT(base, pin)    (pin->input())
-#define DIRECT_MODE_OUTPUT(base, pin)   (pin->output())
-#undef interrupts
-#undef noInterrupts
-#define noInterrupts()                  osThreadSetPriority(osThreadGetId(), osPriorityRealtime) //core_util_critical_section_enter()
-#define interrupts()                    osThreadSetPriority(osThreadGetId(), osPriorityNormal) //core_util_critical_section_exit()
-
-#elif defined(ARDUINO_ARCH_MBED_RP2040)|| defined(ARDUINO_ARCH_RP2040)
-#define delayMicroseconds(time)         busy_wait_us(time)
-#define PIN_TO_BASEREG(pin)             (0)
-#define PIN_TO_BITMASK(pin)             (pin)
-#define IO_REG_TYPE unsigned int
-#define IO_REG_BASE_ATTR
-#define IO_REG_MASK_ATTR
-#define DIRECT_READ(base, pin)          digitalRead(pin)
-#define DIRECT_WRITE_LOW(base, pin)     digitalWrite(pin, LOW)
-#define DIRECT_WRITE_HIGH(base, pin)    digitalWrite(pin, HIGH)
-#define DIRECT_MODE_INPUT(base, pin)    pinMode(pin,INPUT)
-#define DIRECT_MODE_OUTPUT(base, pin)   pinMode(pin,OUTPUT)
-#warning "OneWire. RP2040 in Fallback mode. Using API calls for pinMode,digitalRead and digitalWrite."
 
 #else
 #define PIN_TO_BASEREG(pin)             (0)
