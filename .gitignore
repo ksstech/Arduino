@@ -52,3 +52,6 @@ Mkfile.old
 dkms.conf
 libraries/.DS_Store
 .DS_Store
+
+# Nested independent repo (github.com/ksstech/ESProgNG) - tracked separately
+ESProgNG/
